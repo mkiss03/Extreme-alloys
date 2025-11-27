@@ -1,0 +1,38 @@
+# backend/pyproject.toml
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "extreme-alloys"
+version = "0.1.0"
+description = "AI-powered prediction service for alloys under extreme conditions"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+    {name = "Extreme Alloys Team"}
+]
+
+dependencies = [
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.27.0",
+    "pydantic>=2.5.3",
+    "python-dotenv>=1.0.0",
+    "torch>=2.1.2",
+    "numpy>=1.26.3",
+    "scikit-learn>=1.4.0",
+    "pandas>=2.2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.4",
+    "pytest-cov>=4.1.0",
+    "httpx>=0.26.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["app/tests"]
+python_files = "test_*.py"
+python_functions = "test_*"
+addopts = "-v --cov=app --cov-report=html --cov-report=term"

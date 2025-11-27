@@ -1,0 +1,54 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - ENV=development
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - MODEL_PATH=/app/models/saved
+      - DEVICE=cpu
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./backend/app:/app/app
+      - ./data:/app/data
+      - ./backend/models:/app/models
+    networks:
+      - extreme-alloys-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - API_BASE_URL=http://backend:8000
+      - NODE_ENV=development
+    depends_on:
+      - backend
+    networks:
+      - extreme-alloys-network
+    volumes:
+      - ./frontend/app:/app/app
+      - ./frontend/public:/app/public
+
+networks:
+  extreme-alloys-network:
+    driver: bridge
+
+volumes:
+  models:
+  data:
