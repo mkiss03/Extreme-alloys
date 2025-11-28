@@ -16,20 +16,23 @@ app = FastAPI(
     version="0.2.0"
 )
 
-# CORS middleware - production-ready configuration
-# In production, only allow specific frontend origins
-if ENV == "production":
-    origins = [
-        "https://extreme-alloys.vercel.app",  # Replace with your actual Vercel domain
-        "https://extreme-alloys-frontend.vercel.app",
-    ]
-else:
-    # Development: allow localhost
-    origins = [
-        "http://localhost:3000",
-        "http://localhost:3001",
-        "http://127.0.0.1:3000",
-    ]
+# CORS middleware - Allow frontend origins
+# NOTE: Set ENV=production on Render.com for production configuration
+origins = [
+    # Production Vercel deployments
+    "https://extreme-alloys.vercel.app",
+    "https://extreme-alloys-frontend.vercel.app",
+    "https://bhomev2-fh6c.vercel.app",  # Actual Vercel deployment
+    # Development
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3000",
+]
+
+# Allow all vercel.app domains if needed
+if ENV != "production":
+    logger.warning("Running in development mode - CORS allows all origins from vercel.app")
+    # In development, we might use different Vercel preview deployments
 
 app.add_middleware(
     CORSMiddleware,
