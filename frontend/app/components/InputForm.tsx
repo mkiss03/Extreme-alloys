@@ -1,9 +1,9 @@
 // frontend/app/components/InputForm.tsx
-// Updated: Enhanced error handling with detailed HTTP status messages
+// UPDATED: Centralized API client, input validation, better error messages
 'use client';
 
 import React, { useState } from 'react';
-import { apiClient, AlloyPredictionRequest, AlloyPredictionResponse } from '../api-client';
+import { predictAlloy, AlloyPredictionRequest, AlloyPredictionResponse } from '@/utils/apiClient';
 
 interface InputFormProps {
   onPredictionComplete: (prediction: AlloyPredictionResponse) => void;
@@ -24,49 +24,77 @@ const InputForm: React.FC<InputFormProps> = ({
     model_type: 'gnn',
   });
 
+  const [inputErrors, setInputErrors] = useState<Record<string, string>>({});
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
+
+    // Clear error for this field
+    setInputErrors(prev => ({ ...prev, [name]: '' }));
+
     setFormData(prev => ({
       ...prev,
       [name]: name === 'composition' || name === 'model_type'
         ? value
-        : parseFloat(value),
+        : name === 'cycles'
+          ? parseInt(value) || 0
+          : parseFloat(value) || 0,
     }));
+  };
+
+  const validateForm = (): boolean => {
+    const errors: Record<string, string> = {};
+
+    // Validate composition
+    if (!formData.composition || !formData.composition.includes(':')) {
+      errors.composition = 'Composition must include Element:Percentage pairs';
+    }
+
+    // Validate temperature
+    if (formData.temperature_c < 0) {
+      errors.temperature_c = 'Temperature cannot be negative';
+    }
+    if (formData.temperature_c > 2000) {
+      errors.temperature_c = 'Temperature exceeds realistic range (max 2000°C)';
+    }
+
+    // Validate pressure
+    if (formData.pressure_mpa < 0) {
+      errors.pressure_mpa = 'Pressure cannot be negative';
+    }
+    if (formData.pressure_mpa > 1000) {
+      errors.pressure_mpa = 'Pressure exceeds typical range (max 1000 MPa)';
+    }
+
+    // Validate cycles
+    if (formData.cycles < 0) {
+      errors.cycles = 'Cycles cannot be negative';
+    }
+
+    setInputErrors(errors);
+    return Object.keys(errors).length === 0;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Client-side validation
+    if (!validateForm()) {
+      onError('Please fix the input errors before submitting');
+      return;
+    }
+
     onLoadingChange(true);
+    onError(''); // Clear previous errors
 
     try {
-      const result = await apiClient.predictAlloyBehavior(formData);
+      const result = await predictAlloy(formData);
       onPredictionComplete(result);
     } catch (err: any) {
-      // Enhanced error handling with more user-friendly messages
       console.error('Prediction error:', err);
 
-      let errorMessage = 'Prediction request failed. Please try again or contact support.';
-
-      if (err.response) {
-        // HTTP error response from server
-        const status = err.response.status;
-        const detail = err.response.data?.detail;
-
-        if (status >= 500) {
-          errorMessage = `Server error (${status}): ${detail || 'The prediction service is temporarily unavailable.'}`;
-        } else if (status >= 400) {
-          errorMessage = `Invalid request (${status}): ${detail || 'Please check your input parameters.'}`;
-        } else {
-          errorMessage = detail || errorMessage;
-        }
-      } else if (err.request) {
-        // Network error - request was made but no response received
-        errorMessage = 'Unable to connect to the prediction service. Please check your internet connection.';
-      } else {
-        // Other errors
-        errorMessage = err.message || errorMessage;
-      }
-
+      // User-friendly error message
+      const errorMessage = err.message || 'Prediction request failed. Please try again.';
       onError(errorMessage);
     } finally {
       onLoadingChange(false);
@@ -75,8 +103,9 @@ const InputForm: React.FC<InputFormProps> = ({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {/* Composition */}
       <div>
-        <label htmlFor="composition" className="block text-sm font-medium text-gray-700">
+        <label htmlFor="composition" className="block text-sm font-semibold text-gray-700 mb-2">
           Alloy Composition
         </label>
         <input
@@ -85,16 +114,20 @@ const InputForm: React.FC<InputFormProps> = ({
           name="composition"
           value={formData.composition}
           onChange={handleInputChange}
-          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 px-4 py-2 border"
+          className={`mt-1 block w-full rounded-lg border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 px-4 py-2.5 transition-all`}
           placeholder="Ni:55,Cr:20,Mo:10,W:12,Co:3"
         />
-        <p className="mt-1 text-sm text-gray-500">
+        {inputErrors.composition && (
+          <p className="mt-1 text-sm text-red-600">{inputErrors.composition}</p>
+        )}
+        <p className="mt-1.5 text-xs text-gray-500">
           Format: Element:Percentage pairs separated by commas
         </p>
       </div>
 
+      {/* Temperature */}
       <div>
-        <label htmlFor="temperature_c" className="block text-sm font-medium text-gray-700">
+        <label htmlFor="temperature_c" className="block text-sm font-semibold text-gray-700 mb-2">
           Temperature (°C)
         </label>
         <input
@@ -103,13 +136,19 @@ const InputForm: React.FC<InputFormProps> = ({
           name="temperature_c"
           value={formData.temperature_c}
           onChange={handleInputChange}
-          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 px-4 py-2 border"
+          className="mt-1 block w-full rounded-lg border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 px-4 py-2.5 transition-all"
           step="0.1"
+          min="0"
+          max="2000"
         />
+        {inputErrors.temperature_c && (
+          <p className="mt-1 text-sm text-red-600">{inputErrors.temperature_c}</p>
+        )}
       </div>
 
+      {/* Pressure */}
       <div>
-        <label htmlFor="pressure_mpa" className="block text-sm font-medium text-gray-700">
+        <label htmlFor="pressure_mpa" className="block text-sm font-semibold text-gray-700 mb-2">
           Pressure (MPa)
         </label>
         <input
@@ -118,13 +157,19 @@ const InputForm: React.FC<InputFormProps> = ({
           name="pressure_mpa"
           value={formData.pressure_mpa}
           onChange={handleInputChange}
-          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 px-4 py-2 border"
+          className="mt-1 block w-full rounded-lg border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 px-4 py-2.5 transition-all"
           step="0.1"
+          min="0"
+          max="1000"
         />
+        {inputErrors.pressure_mpa && (
+          <p className="mt-1 text-sm text-red-600">{inputErrors.pressure_mpa}</p>
+        )}
       </div>
 
+      {/* Cycles */}
       <div>
-        <label htmlFor="cycles" className="block text-sm font-medium text-gray-700">
+        <label htmlFor="cycles" className="block text-sm font-semibold text-gray-700 mb-2">
           Thermal/Mechanical Cycles
         </label>
         <input
@@ -133,31 +178,40 @@ const InputForm: React.FC<InputFormProps> = ({
           name="cycles"
           value={formData.cycles}
           onChange={handleInputChange}
-          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 px-4 py-2 border"
+          className="mt-1 block w-full rounded-lg border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 px-4 py-2.5 transition-all"
           step="1"
+          min="0"
         />
+        {inputErrors.cycles && (
+          <p className="mt-1 text-sm text-red-600">{inputErrors.cycles}</p>
+        )}
       </div>
 
+      {/* Model Type */}
       <div>
-        <label htmlFor="model_type" className="block text-sm font-medium text-gray-700">
-          Model Type
+        <label htmlFor="model_type" className="block text-sm font-semibold text-gray-700 mb-2">
+          Prediction Model
         </label>
         <select
           id="model_type"
           name="model_type"
           value={formData.model_type}
           onChange={handleInputChange}
-          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 px-4 py-2 border"
+          className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 px-4 py-2.5 transition-all bg-white"
         >
-          <option value="gnn">Graph Neural Network</option>
-          <option value="creep">Creep Model</option>
-          <option value="ensemble">Ensemble</option>
+          <option value="gnn">Graph Neural Network (Balanced)</option>
+          <option value="physics_heuristic">Physics Heuristic (Theory-based)</option>
+          <option value="safety_conservative">Safety Conservative (Most Cautious)</option>
         </select>
+        <p className="mt-1.5 text-xs text-gray-500">
+          Different models use different prediction strategies
+        </p>
       </div>
 
+      {/* Submit Button */}
       <button
         type="submit"
-        className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
+        className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white font-semibold py-3 px-6 rounded-lg hover:from-blue-700 hover:to-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
       >
         Predict Behavior
       </button>

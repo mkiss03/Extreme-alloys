@@ -1,4 +1,5 @@
 # backend/app/services/preprocessing.py
+# UPDATED: Robust input validation with detailed error messages and auto-normalization
 """
 Data preprocessing and feature engineering for alloy composition analysis
 """
@@ -10,21 +11,105 @@ from app.config import logger
 
 def parse_composition(composition_str: str) -> Dict[str, float]:
     """
-    Parse composition string into element percentages
+    Parse composition string into element percentages with robust error handling
 
     Args:
         composition_str: String like "Ni:55,Cr:20,Mo:10,W:12,Co:3"
 
     Returns:
         Dictionary mapping element symbols to percentages
+
+    Raises:
+        ValueError: If composition format is invalid
     """
     composition = {}
 
-    for pair in composition_str.split(","):
-        element, percentage = pair.strip().split(":")
-        composition[element.strip()] = float(percentage)
+    if not composition_str or not isinstance(composition_str, str):
+        raise ValueError("Composition must be a non-empty string")
+
+    try:
+        for pair in composition_str.split(","):
+            pair = pair.strip()
+            if not pair:
+                continue
+
+            if ":" not in pair:
+                raise ValueError(f"Invalid format in '{pair}'. Expected 'Element:Percentage'")
+
+            element, percentage = pair.split(":", 1)
+            element = element.strip()
+            percentage_str = percentage.strip()
+
+            # Validate element symbol (basic check)
+            if not element or not element[0].isupper():
+                raise ValueError(f"Invalid element symbol: '{element}'")
+
+            # Parse percentage
+            try:
+                pct = float(percentage_str)
+            except ValueError:
+                raise ValueError(f"Invalid percentage value '{percentage_str}' for element {element}")
+
+            # Range check
+            if pct < 0 or pct > 100:
+                raise ValueError(f"Percentage for {element} must be between 0 and 100, got {pct}")
+
+            composition[element] = pct
+
+    except Exception as e:
+        raise ValueError(f"Failed to parse composition '{composition_str}': {str(e)}")
+
+    if not composition:
+        raise ValueError("Composition cannot be empty")
 
     return composition
+
+
+def validate_and_normalize_composition(composition: Dict[str, float]) -> Dict[str, float]:
+    """
+    Validate composition percentages sum to ~100 and normalize if needed
+
+    Args:
+        composition: Dictionary of element -> percentage
+
+    Returns:
+        Normalized composition dictionary
+
+    Raises:
+        ValueError: If composition is invalid
+    """
+    total = sum(composition.values())
+
+    # Check if total is reasonable
+    if total < 50.0:
+        raise ValueError(
+            f"Total composition is only {total:.1f}%. This is unusually low. "
+            "Please check your input."
+        )
+
+    if total > 150.0:
+        raise ValueError(
+            f"Total composition is {total:.1f}%. This exceeds reasonable limits. "
+            "Percentages should sum to approximately 100%."
+        )
+
+    # If total is close to 100, it's fine
+    if 99.0 <= total <= 101.0:
+        return composition
+
+    # Auto-normalize if within reasonable range
+    if 90.0 <= total <= 110.0:
+        logger.warning(
+            f"Composition totals {total:.1f}%, auto-normalizing to 100%"
+        )
+        normalized = {elem: (pct / total) * 100.0 for elem, pct in composition.items()}
+        return normalized
+
+    # Otherwise, it's an error
+    raise ValueError(
+        f"Composition percentages sum to {total:.1f}%, which is outside acceptable range (90-110%). "
+        "Please check your input values."
+    )
 
 
 def prepare_features(input_data: Dict) -> np.ndarray:
@@ -41,11 +126,17 @@ def prepare_features(input_data: Dict) -> np.ndarray:
 
     Returns:
         Normalized numpy array: [Ni%, Cr%, Mo%, W%, Co%, temp_K, pressure, cycles]
+
+    Raises:
+        ValueError: If input data is invalid
     """
     logger.info(f"Processing input: {input_data}")
 
     # Parse composition string
     composition = parse_composition(input_data["composition"])
+
+    # Validate and normalize composition
+    composition = validate_and_normalize_composition(composition)
 
     # Define element order (fixed for consistent feature vector)
     element_order = ["Ni", "Cr", "Mo", "W", "Co"]
@@ -86,7 +177,7 @@ def prepare_features(input_data: Dict) -> np.ndarray:
 
 def validate_input(input_data: Dict) -> Tuple[bool, str]:
     """
-    Validate input data format and ranges
+    Validate input data format and ranges with comprehensive checks
 
     Returns:
         (is_valid, error_message)
@@ -98,28 +189,47 @@ def validate_input(input_data: Dict) -> Tuple[bool, str]:
         if field not in input_data:
             return False, f"Missing required field: {field}"
 
-    # Validate temperature range (reasonable for metallurgy)
+    # Validate temperature range (realistic for metallurgy)
     temp = input_data["temperature_c"]
-    if not (-273 < temp < 3000):
-        return False, f"Temperature out of valid range: {temp}°C"
+    if not isinstance(temp, (int, float)):
+        return False, f"Temperature must be a number, got {type(temp).__name__}"
+
+    if temp < -273:
+        return False, f"Temperature cannot be below absolute zero: {temp}°C"
+
+    if temp < 0:
+        return False, f"Temperature must be positive for this application: {temp}°C"
+
+    if temp > 2000:
+        return False, f"Temperature {temp}°C exceeds typical alloy operating range (max ~2000°C)"
 
     # Validate pressure
     pressure = input_data["pressure_mpa"]
+    if not isinstance(pressure, (int, float)):
+        return False, f"Pressure must be a number, got {type(pressure).__name__}"
+
     if pressure < 0:
-        return False, f"Pressure must be positive: {pressure} MPa"
+        return False, f"Pressure cannot be negative: {pressure} MPa"
+
+    if pressure > 1000:
+        return False, f"Pressure {pressure} MPa is unusually high (typical max ~1000 MPa)"
 
     # Validate cycles
     cycles = input_data["cycles"]
+    if not isinstance(cycles, int):
+        return False, f"Cycles must be an integer, got {type(cycles).__name__}"
+
     if cycles < 0:
-        return False, f"Cycles must be non-negative: {cycles}"
+        return False, f"Cycles cannot be negative: {cycles}"
+
+    if cycles > 10000000:
+        return False, f"Cycles {cycles} is unrealistically high (max ~10M)"
 
     # Validate composition format
     try:
         composition = parse_composition(input_data["composition"])
-        total = sum(composition.values())
-        if not (99.0 <= total <= 101.0):  # Allow small rounding errors
-            return False, f"Composition percentages should sum to ~100, got {total}"
-    except Exception as e:
-        return False, f"Invalid composition format: {str(e)}"
+        validate_and_normalize_composition(composition)
+    except ValueError as e:
+        return False, str(e)
 
     return True, ""

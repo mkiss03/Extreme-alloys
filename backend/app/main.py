@@ -1,26 +1,41 @@
 # backend/app/main.py
+# UPDATED: Production-ready CORS configuration with specific origins
 """
 Main FastAPI application for Extreme Alloys prediction service
 """
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.config import API_PREFIX, logger
+from app.config import API_PREFIX, logger, ENV
 from app.api.routes_prediction import router as prediction_router
 
 # Initialize FastAPI app
 app = FastAPI(
     title="Extreme Alloys API",
     description="AI-powered prediction service for alloys under extreme conditions",
-    version="0.1.0"
+    version="0.2.0"
 )
 
-# CORS middleware for frontend communication
+# CORS middleware - production-ready configuration
+# In production, only allow specific frontend origins
+if ENV == "production":
+    origins = [
+        "https://extreme-alloys.vercel.app",  # Replace with your actual Vercel domain
+        "https://extreme-alloys-frontend.vercel.app",
+    ]
+else:
+    # Development: allow localhost
+    origins = [
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3000",
+    ]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify exact origins
+    allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -37,7 +52,8 @@ async def health_check():
     return {
         "status": "healthy",
         "service": "extreme-alloys-api",
-        "version": "0.1.0"
+        "version": "0.2.0",
+        "environment": ENV
     }
 
 
@@ -48,8 +64,10 @@ async def root():
     """
     return {
         "message": "Extreme Alloys Prediction API",
+        "version": "0.2.0",
         "docs": "/docs",
-        "health": "/health"
+        "health": "/health",
+        "models": ["gnn", "physics_heuristic", "safety_conservative"]
     }
 
 
