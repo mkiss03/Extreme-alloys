@@ -7,7 +7,9 @@
 import axios, { AxiosInstance } from 'axios';
 
 // Read backend URL from environment variable (falls back to localhost for development)
-const API_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+// Remove trailing slash to prevent double slashes in URLs
+const rawBackendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+const API_BASE_URL = rawBackendUrl.replace(/\/$/, ''); // Remove trailing slash if present
 
 // Dev logging - show which backend URL is being used
 if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
