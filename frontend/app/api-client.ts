@@ -1,11 +1,21 @@
 // frontend/app/api-client.ts
+// Updated to use NEXT_PUBLIC_BACKEND_URL for backend base URL
 /**
  * API client for communicating with the Extreme Alloys backend
  */
 
 import axios, { AxiosInstance } from 'axios';
 
-const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:8000';
+// Read backend URL from environment variable (falls back to localhost for development)
+const API_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+
+// Dev logging - show which backend URL is being used
+if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+  console.log('[ExtremeAlloys] Using backend URL:', API_BASE_URL);
+}
+
+// Export API_BASE_URL for use in other components if needed
+export { API_BASE_URL };
 
 export interface AlloyPredictionRequest {
   composition: string;

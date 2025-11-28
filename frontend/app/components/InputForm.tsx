@@ -1,4 +1,5 @@
 // frontend/app/components/InputForm.tsx
+// Updated: Enhanced error handling with detailed HTTP status messages
 'use client';
 
 import React, { useState } from 'react';
@@ -41,7 +42,31 @@ const InputForm: React.FC<InputFormProps> = ({
       const result = await apiClient.predictAlloyBehavior(formData);
       onPredictionComplete(result);
     } catch (err: any) {
-      const errorMessage = err.response?.data?.detail || 'Failed to get prediction';
+      // Enhanced error handling with more user-friendly messages
+      console.error('Prediction error:', err);
+
+      let errorMessage = 'Prediction request failed. Please try again or contact support.';
+
+      if (err.response) {
+        // HTTP error response from server
+        const status = err.response.status;
+        const detail = err.response.data?.detail;
+
+        if (status >= 500) {
+          errorMessage = `Server error (${status}): ${detail || 'The prediction service is temporarily unavailable.'}`;
+        } else if (status >= 400) {
+          errorMessage = `Invalid request (${status}): ${detail || 'Please check your input parameters.'}`;
+        } else {
+          errorMessage = detail || errorMessage;
+        }
+      } else if (err.request) {
+        // Network error - request was made but no response received
+        errorMessage = 'Unable to connect to the prediction service. Please check your internet connection.';
+      } else {
+        // Other errors
+        errorMessage = err.message || errorMessage;
+      }
+
       onError(errorMessage);
     } finally {
       onLoadingChange(false);

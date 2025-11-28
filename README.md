@@ -81,11 +81,22 @@ cd frontend
 # Install dependencies
 npm install
 
+# Set up environment variables for local development
+# Copy .env.example to .env.local and configure
+cp .env.example .env.local
+
+# Edit .env.local to point to your backend:
+# NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
+
 # Run development server
 npm run dev
 ```
 
 Frontend will run on `http://localhost:3000`
+
+**Fontos:** A frontend a `NEXT_PUBLIC_BACKEND_URL` environment változót használja a backend eléréséhez:
+- **Lokális fejlesztés**: Állítsd be `frontend/.env.local` fájlban: `NEXT_PUBLIC_BACKEND_URL=http://localhost:8000`
+- **Vercel deployment**: Add hozzá a Vercel Project Settings → Environment Variables alatt: `NEXT_PUBLIC_BACKEND_URL=https://extreme-alloys.onrender.com`
 
 ## API Usage
 
@@ -176,6 +187,30 @@ This project is designed to work with alloy composition data from:
 - Docker & Docker Compose
 - Python 3.11
 - Node.js 20
+
+## Deployment
+
+### Backend (Render)
+
+1. Hozz létre új Web Service-t a Render-en
+2. Kapcsold össze a GitHub repo-val
+3. Beállítások:
+   - **Build Command**: `cd backend && pip install -r requirements.txt`
+   - **Start Command**: `cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+   - **Environment Variables**: Állítsd be a szükséges változókat (ENV, MODEL_PATH, stb.)
+
+### Frontend (Vercel)
+
+1. Importáld a projektet a Vercel-be
+2. **Root Directory**: Állítsd be `frontend`-re
+3. **Environment Variables** (Project Settings):
+   ```
+   NEXT_PUBLIC_BACKEND_URL=https://extreme-alloys.onrender.com
+   ```
+   (Cseréld le a saját Render backend URL-edre)
+4. Deploy!
+
+**Fontos:** A `NEXT_PUBLIC_BACKEND_URL` változó nélkül a frontend localhost:8000-re próbál csatlakozni, ami Vercel-ről nem fog működni.
 
 ## Roadmap
 

@@ -44,11 +44,22 @@ cd frontend
 # Függőségek telepítése
 npm install
 
+# Environment változó beállítása lokális fejlesztéshez
+# Másold át a .env.example fájlt .env.local-ra
+cp .env.example .env.local
+
+# Szerkeszd a .env.local fájlt:
+# NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
+
 # Dev server indítása
 npm run dev
 
 # Frontend: http://localhost:3000
 ```
+
+**Fontos:** A frontend a `NEXT_PUBLIC_BACKEND_URL` környezeti változót használja a backend eléréséhez:
+- Lokálisan: `http://localhost:8000`
+- Production (Vercel): `https://extreme-alloys.onrender.com` (vagy a saját backend URL-ed)
 
 ## 📊 Példa Használat
 
@@ -227,7 +238,10 @@ docker-compose down
 Ha a predikció `physics_heuristic_v0.1` modelt használ, ez normális - nincs még betanított model. Futtasd a training scriptet.
 
 ### Frontend nem éri el a backend-et
-Ellenőrizd a `frontend/next.config.mjs`-ben az `API_BASE_URL` változót.
+Ellenőrizd a `NEXT_PUBLIC_BACKEND_URL` environment változót:
+- **Lokálisan**: `frontend/.env.local` fájlban legyen `NEXT_PUBLIC_BACKEND_URL=http://localhost:8000`
+- **Vercel-en**: Project Settings → Environment Variables-ben add hozzá a változót
+- **Böngésző console**: Nézd meg, hogy megjelenik-e a `[ExtremeAlloys] Using backend URL: ...` log fejlesztői módban
 
 ## 📚 További Dokumentáció
 
@@ -259,3 +273,67 @@ curl -X POST http://localhost:8000/api/v1/predict/extreme_alloy \
 ```
 
 Ha minden választ ad, akkor minden rendben működik! 🚀
+
+## 🚀 Production Deployment
+
+### Backend Deployment (Render.com)
+
+1. Jelentkezz be a [Render.com](https://render.com)-ra
+2. Hozz létre új **Web Service**-t
+3. Kapcsold össze a GitHub repo-dat
+4. Beállítások:
+   - **Name**: `extreme-alloys-backend`
+   - **Build Command**: `cd backend && pip install -r requirements.txt`
+   - **Start Command**: `cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+5. Environment Variables:
+   ```
+   ENV=production
+   LOG_LEVEL=INFO
+   MODEL_PATH=./models/saved
+   ```
+6. Deploy! 🎉
+7. Mentsd el a backend URL-t (pl. `https://extreme-alloys.onrender.com`)
+
+### Frontend Deployment (Vercel)
+
+1. Jelentkezz be a [Vercel](https://vercel.com)-be
+2. Importáld a projektet: "Add New" → "Project" → GitHub repo kiválasztása
+3. **FONTOS beállítások**:
+   - **Framework Preset**: Next.js
+   - **Root Directory**: `frontend` ← NE HAGYD KI!
+   - **Build Command**: `npm run build` (automatikus)
+   - **Output Directory**: `.next` (automatikus)
+4. **Environment Variables** (Project Settings):
+   ```
+   NEXT_PUBLIC_BACKEND_URL=https://extreme-alloys.onrender.com
+   ```
+   ⚠️ Cseréld le a saját Render backend URL-edre!
+5. Deploy! 🚀
+
+### Deployment Ellenőrzése
+
+```bash
+# Backend health check (Render URL-del)
+curl https://extreme-alloys.onrender.com/health
+
+# Frontend ellenőrzés
+# Nyisd meg a Vercel deployment URL-t böngészőben
+# Próbálj predikciót futtatni
+# Ellenőrizd a browser console-ban: látszik-e a "[ExtremeAlloys] Using backend URL: ..." log
+```
+
+### Gyakori Deployment Problémák
+
+**❌ Frontend nem éri el a backend-et**
+- Ellenőrizd, hogy a `NEXT_PUBLIC_BACKEND_URL` be van-e állítva Vercel-en
+- Nézd meg a Vercel deployment logs-ot
+- Ellenőrizd a browser Network tab-ot: milyen URL-re megy a kérés?
+
+**❌ Backend nem indul el Render-en**
+- Ellenőrizd a Build Logs-ot
+- Nézd meg, hogy a Start Command helyes-e
+- Port: Render automatikusan beállítja a `$PORT` változót
+
+**❌ CORS hiba**
+- A backend `main.py`-ban a CORS middleware engedi az összes origint development módban
+- Production-ben szűkítsd le a `allow_origins` listát a frontend URL-re
