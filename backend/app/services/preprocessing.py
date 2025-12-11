@@ -27,6 +27,12 @@ def parse_composition(composition_str: str) -> Dict[str, float]:
     if not composition_str or not isinstance(composition_str, str):
         raise ValueError("Composition must be a non-empty string")
 
+    # Valid element symbols (common in superalloys)
+    VALID_ELEMENTS = {
+        "Ni", "Cr", "Co", "Mo", "W", "Al", "Ti", "Ta", "Nb", "Re", "Ru",
+        "Fe", "Mn", "Si", "C", "B", "Zr", "Hf", "V", "Y"
+    }
+
     try:
         for pair in composition_str.split(","):
             pair = pair.strip()
@@ -34,28 +40,45 @@ def parse_composition(composition_str: str) -> Dict[str, float]:
                 continue
 
             if ":" not in pair:
-                raise ValueError(f"Invalid format in '{pair}'. Expected 'Element:Percentage'")
+                raise ValueError(
+                    f"Invalid format in '{pair}'. Expected 'Element:Percentage' pairs separated by commas"
+                )
 
             element, percentage = pair.split(":", 1)
             element = element.strip()
             percentage_str = percentage.strip()
 
-            # Validate element symbol (basic check)
+            # Validate element symbol - must be capitalized properly
             if not element or not element[0].isupper():
-                raise ValueError(f"Invalid element symbol: '{element}'")
+                raise ValueError(
+                    f"Invalid element symbol: '{element}'. Elements must start with uppercase letter (e.g., Ni, Cr, Mo)"
+                )
+
+            # Check if element is in valid set
+            if element not in VALID_ELEMENTS:
+                logger.warning(
+                    f"Element '{element}' not in standard alloy element list. Proceeding anyway."
+                )
 
             # Parse percentage
             try:
                 pct = float(percentage_str)
             except ValueError:
-                raise ValueError(f"Invalid percentage value '{percentage_str}' for element {element}")
+                raise ValueError(
+                    f"Invalid percentage value '{percentage_str}' for element {element}. Must be a number."
+                )
 
             # Range check
-            if pct < 0 or pct > 100:
-                raise ValueError(f"Percentage for {element} must be between 0 and 100, got {pct}")
+            if pct < 0:
+                raise ValueError(f"Percentage for {element} cannot be negative, got {pct}")
+
+            if pct > 100:
+                raise ValueError(f"Percentage for {element} cannot exceed 100%, got {pct}")
 
             composition[element] = pct
 
+    except ValueError:
+        raise
     except Exception as e:
         raise ValueError(f"Failed to parse composition '{composition_str}': {str(e)}")
 
@@ -67,7 +90,7 @@ def parse_composition(composition_str: str) -> Dict[str, float]:
 
 def validate_and_normalize_composition(composition: Dict[str, float]) -> Dict[str, float]:
     """
-    Validate composition percentages sum to ~100 and normalize if needed
+    Validate composition percentages sum to ~100 and normalize if needed (±5% tolerance)
 
     Args:
         composition: Dictionary of element -> percentage
@@ -93,28 +116,32 @@ def validate_and_normalize_composition(composition: Dict[str, float]) -> Dict[st
             "Percentages should sum to approximately 100%."
         )
 
-    # If total is close to 100, it's fine
+    # If total is close to 100% (within ±1%), it's fine
     if 99.0 <= total <= 101.0:
+        logger.info(f"Composition total: {total:.2f}% - within acceptable range")
         return composition
 
-    # Auto-normalize if within reasonable range
-    if 90.0 <= total <= 110.0:
+    # Auto-normalize if within ±5% (95-105%)
+    if 95.0 <= total <= 105.0:
         logger.warning(
-            f"Composition totals {total:.1f}%, auto-normalizing to 100%"
+            f"Composition totals {total:.2f}%, auto-normalizing to 100%"
         )
         normalized = {elem: (pct / total) * 100.0 for elem, pct in composition.items()}
+        new_total = sum(normalized.values())
+        logger.info(f"Normalized composition total: {new_total:.2f}%")
         return normalized
 
     # Otherwise, it's an error
     raise ValueError(
-        f"Composition percentages sum to {total:.1f}%, which is outside acceptable range (90-110%). "
+        f"Composition percentages sum to {total:.2f}%, which is outside acceptable range (95-105% for auto-normalization). "
         "Please check your input values."
     )
 
 
-def prepare_features(input_data: Dict) -> np.ndarray:
+def prepare_features(input_data: Dict) -> Tuple[np.ndarray, Dict]:
     """
     Convert input data into normalized feature vector for ML model
+    Also enriches input_data with parsed composition and temperature in Kelvin
 
     Expected input format:
     {
@@ -125,7 +152,9 @@ def prepare_features(input_data: Dict) -> np.ndarray:
     }
 
     Returns:
-        Normalized numpy array: [Ni%, Cr%, Mo%, W%, Co%, temp_K, pressure, cycles]
+        Tuple of:
+        - Normalized numpy array: [Ni%, Cr%, Mo%, W%, Co%, temp_K, pressure, cycles]
+        - Enriched input_data with 'composition_dict' and 'temperature_k' fields
 
     Raises:
         ValueError: If input data is invalid
@@ -144,8 +173,9 @@ def prepare_features(input_data: Dict) -> np.ndarray:
     # Extract element percentages (default to 0 if not present)
     element_percentages = [composition.get(elem, 0.0) for elem in element_order]
 
-    # Convert temperature from Celsius to Kelvin
+    # Convert temperature from Celsius to Kelvin (automatic conversion)
     temperature_k = input_data["temperature_c"] + 273.15
+    logger.info(f"Automatic Kelvin conversion: {input_data['temperature_c']}°C → {temperature_k:.2f}K")
 
     # Extract other features
     pressure_mpa = float(input_data["pressure_mpa"])
@@ -170,9 +200,14 @@ def prepare_features(input_data: Dict) -> np.ndarray:
     # Cycles: normalize to log scale (typical range: 1 - 1e6)
     feature_array[7] = np.log10(max(feature_array[7], 1)) / 6.0
 
-    logger.info(f"Generated feature vector: {feature_array}")
+    logger.info(f"Generated normalized feature vector (shape: {feature_array.shape})")
 
-    return feature_array
+    # Enrich input_data with parsed composition and temperature in Kelvin
+    enriched_input = input_data.copy()
+    enriched_input["composition_dict"] = composition
+    enriched_input["temperature_k"] = temperature_k
+
+    return feature_array, enriched_input
 
 
 def validate_input(input_data: Dict) -> Tuple[bool, str]:
